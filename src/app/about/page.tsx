@@ -1,15 +1,4 @@
-// src/app/page.tsx
-
-/**
- * This code is written by Khalid as part of a university thesis project.
- * The explanations are provided to offer guidance on the project's implementation.
- *
- * This file defines the `AboutPage` component, which serves as the "About Us" page for the platform.
- * It highlights the platform's features, mission, and benefits in an engaging and visually appealing way.
- * The page uses animations, gradients, and interactive elements to create a modern and immersive user experience.
- */
-
-"use client"; // Marks this component as a Client Component, ensuring it runs on the client side.
+"use client";
 
 import React, { useEffect, useState } from "react";
 import {
@@ -19,9 +8,9 @@ import {
   Grid,
   useTheme,
   useMediaQuery,
-} from "@mui/material"; // Import Material-UI components for building the UI.
-import { styled, keyframes } from "@mui/system"; // Import styled and keyframes for custom animations and styles.
-import PeopleIcon from "@mui/icons-material/People"; // Import Material-UI icons for visual elements.
+} from "@mui/material";
+import { styled, keyframes } from "@mui/system";
+import PeopleIcon from "@mui/icons-material/People";
 import WorkIcon from "@mui/icons-material/Work";
 import ConnectWithoutContactIcon from "@mui/icons-material/ConnectWithoutContact";
 import EmojiPeopleIcon from "@mui/icons-material/EmojiPeople";
@@ -118,32 +107,39 @@ const CustomCursor = styled(Box)(({ theme }) => ({
   transition: "transform 0.1s ease, opacity 0.2s ease",
 }));
 
-/**
- * The `AboutPage` component is the main interface for the "About Us" page.
- * It highlights the platform's mission, features, and benefits using engaging animations and visuals.
- */
 const AboutPage: React.FC = () => {
-  const theme = useTheme(); // Use the theme for styling.
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm")); // Detect mobile devices.
-  const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 }); // Track cursor position for custom cursor effect.
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
+  const [showCustomCursor, setShowCustomCursor] = useState(false);
 
-  // Update cursor position on mouse move
   useEffect(() => {
-    // Check if window is defined (client-side only)
+    // Only run on client-side
     if (typeof window !== 'undefined') {
+      setShowCustomCursor(window.innerWidth > 768);
+      
       const handleMouseMove = (e: MouseEvent) => {
         setCursorPosition({ x: e.clientX, y: e.clientY });
       };
-      window.addEventListener("mousemove", handleMouseMove);
-      return () => window.removeEventListener("mousemove", handleMouseMove);
+
+      if (showCustomCursor) {
+        window.addEventListener("mousemove", handleMouseMove);
+      }
+
+      return () => {
+        window.removeEventListener("mousemove", handleMouseMove);
+      };
     }
-  }, []);
-  
+  }, [showCustomCursor]);
+
   return (
     <StyledBox>
       <ParticleBackground />
-      <CustomCursor sx={{ left: cursorPosition.x, top: cursorPosition.y }} />
+      {showCustomCursor && (
+        <CustomCursor sx={{ left: cursorPosition.x, top: cursorPosition.y }} />
+      )}
       <Container maxWidth="lg" sx={{ position: "relative", zIndex: 1 }}>
+        {/* Rest of your component remains the same */}
         {/* Page Title */}
         <Typography
           variant="h1"

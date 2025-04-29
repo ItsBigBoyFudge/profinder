@@ -12,12 +12,13 @@ import { getStorage } from "firebase/storage";
 // Firebase configuration object containing keys and identifiers for connecting to the Firebase project.
 // These values are obtained from the Firebase Console when setting up the project.
 const firebaseConfig = {
-  apiKey: "AIzaSyAbVYh02NaWq6N9yI5ImU45JVxqEjedB3I", // API key for Firebase services.
-  authDomain: "profinder-85ebf.firebaseapp.com", // Domain for Firebase Authentication.
-  projectId: "profinder-85ebf", // Unique identifier for the Firebase project.
-  storageBucket: "profinder-85ebf.appspot.com", // Storage bucket for Firebase Storage (used for file uploads).
-  messagingSenderId: "171804776890", // Sender ID for Firebase Cloud Messaging.
-  appId: "1:171804776890:web:efa47505b197dc8c4ea583", // App ID for the Firebase project.
+  apiKey: "AIzaSyAlMB6C7ZbF7XWTc6zTNQn6bpvryIRj8W0",
+  authDomain: "profinder-bb212.firebaseapp.com",
+  projectId: "profinder-bb212",
+  storageBucket: "profinder-bb212.firebasestorage.app",
+  messagingSenderId: "17878932303",
+  appId: "1:17878932303:web:61d3e08d365735ec9d033a",
+  measurementId: "G-T8G9B2H9CR"
 };
 
 // Initialize the Firebase app using the configuration object.

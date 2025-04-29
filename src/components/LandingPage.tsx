@@ -1,10 +1,4 @@
-/**
- * This code is written by Khalid as part of a university thesis project. The explanations are provided to offer guidance on the project's implementation.
- *
- * This file defines the landing page for the ProFinder web application. The landing page serves as the entry point for users, showcasing the platform's features, purpose, and a call-to-action to encourage user engagement. It includes animations, interactive elements, and a visually appealing design to create a memorable first impression.
- */
-
-"use client"; // Mark this as a Client Component since it uses browser-specific APIs.
+"use client";
 
 import React, { useEffect, useState } from "react";
 import {
@@ -21,91 +15,74 @@ import {
   Grow,
   keyframes,
 } from "@mui/material";
-import Rating from '@mui/material/Rating';
 import {
   People,
   Work,
   ConnectWithoutContact,
   ArrowForward,
 } from "@mui/icons-material";
-import khalidImage from "../../public/khalid.jpg"; // Import your picture
-import Particles from "@tsparticles/react"; // Import Particles for the background animation
-import { loadSlim } from "@tsparticles/slim"; // Import loadSlim for basic functionality
-import type { Engine } from "@tsparticles/engine"; // Import Engine type for particles
-import Confetti from "react-confetti"; // For confetti animation
-import { useWindowSize } from "react-use"; // For confetti dimensions
+import khalidImage from "../../public/khalid.jpg";
+import Particles from "@tsparticles/react";
+import { loadSlim } from "@tsparticles/slim";
+import type { Engine } from "@tsparticles/engine";
+import Confetti from "react-confetti";
+import { useWindowSize } from "react-use";
 
-/**
- * Define the float animation for the hero icon.
- * This creates a subtle floating effect to draw attention.
- */
 const floatAnimation = keyframes`
   0% { transform: translateY(0); }
   50% { transform: translateY(-10px); }
   100% { transform: translateY(0); }
 `;
 
-/**
- * Define the neon glow animation for text and icons.
- * This creates a glowing effect to enhance the futuristic theme.
- */
 const neonGlowAnimation = keyframes`
   0% { filter: drop-shadow(0 0 5px ${alpha("#00ff88", 0.3)}); }
   50% { filter: drop-shadow(0 0 20px ${alpha("#00ff88", 0.6)}); }
   100% { filter: drop-shadow(0 0 5px ${alpha("#00ff88", 0.3)}); }
 `;
 
-/**
- * Define the typewriter animation for the hero title.
- * This creates a typing effect to make the title more engaging.
- */
 const typewriterAnimation = keyframes`
   from { width: 0; }
   to { width: 100%; }
 `;
 
 const LandingPage: React.FC = () => {
-  const theme = useTheme(); // Access the theme for consistent styling
-  const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 }); // Track cursor position for custom cursor effect
-  const [showConfetti, setShowConfetti] = useState(false); // Control confetti animation
-  const { width, height } = useWindowSize(); // Get window dimensions for confetti
+  const theme = useTheme();
+  const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const { width, height } = useWindowSize();
 
-  /**
-   * Initialize particles for the background animation.
-   * This loads the particles engine and sets up the animation.
-   */
   const particlesInit = async (engine: Engine) => {
-    await loadSlim(engine); // Load the slim tsparticles engine
+    await loadSlim(engine);
   };
 
-  /**
-   * Custom cursor effect (disabled on mobile).
-   * This creates a glowing dot that follows the cursor.
-   */
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      setCursorPosition({ x: e.clientX, y: e.clientY });
-    };
-    if (window.innerWidth > 768) {
-      window.addEventListener("mousemove", handleMouseMove);
+    // Check if window is available (client-side)
+    if (typeof window !== 'undefined') {
+      setIsMobile(window.innerWidth <= 768);
+      
+      const handleMouseMove = (e: MouseEvent) => {
+        setCursorPosition({ x: e.clientX, y: e.clientY });
+      };
+      
+      if (!isMobile) {
+        window.addEventListener("mousemove", handleMouseMove);
+      }
+      
+      return () => window.removeEventListener("mousemove", handleMouseMove);
     }
-    return () => window.removeEventListener("mousemove", handleMouseMove);
-  }, []);
+  }, [isMobile]);
 
-  /**
-   * Trigger confetti on button click.
-   * This creates a celebratory effect when users interact with the call-to-action button.
-   */
   const handleConfetti = () => {
     setShowConfetti(true);
-    setTimeout(() => setShowConfetti(false), 5000); // Confetti lasts for 5 seconds
+    setTimeout(() => setShowConfetti(false), 5000);
   };
 
   return (
     <Box
       sx={{
         minHeight: "100vh",
-        background: theme.palette.background.default, // Dark background from theme
+        background: theme.palette.background.default,
         color: theme.palette.text.primary,
         position: "relative",
         overflow: "hidden",
@@ -138,13 +115,11 @@ const LandingPage: React.FC = () => {
         },
       }}
     >
-      {/* Confetti Animation */}
       {showConfetti && (
         <Confetti width={width} height={height} recycle={false} />
       )}
 
-      {/* Custom Cursor (disabled on mobile) */}
-      {window.innerWidth > 768 && (
+      {!isMobile && (
         <Box
           sx={{
             position: "fixed",
@@ -165,7 +140,6 @@ const LandingPage: React.FC = () => {
         />
       )}
 
-      {/* Particle Background */}
       <Box
         sx={{
           position: "absolute",
@@ -178,17 +152,18 @@ const LandingPage: React.FC = () => {
       >
         <Particles
           id="tsparticles"
+          init={particlesInit}
           options={{
             background: {
               color: {
-                value: theme.palette.background.default, // Match the background color
+                value: theme.palette.background.default,
               },
             },
             fpsLimit: 60,
             interactivity: {
               events: {
                 onHover: {
-                  enable: window.innerWidth > 768, // Disable hover effects on mobile
+                  enable: !isMobile,
                   mode: "bubble",
                 },
               },
@@ -204,7 +179,7 @@ const LandingPage: React.FC = () => {
             },
             particles: {
               color: {
-                value: theme.palette.primary.main, // Neon green from theme
+                value: theme.palette.primary.main,
               },
               links: {
                 color: theme.palette.primary.main,
@@ -570,7 +545,7 @@ const LandingPage: React.FC = () => {
                   WebkitTextFillColor: "transparent",
                 }}
               >
-                Hi, I'm Khalid
+                Hi, Im Khalid
               </Typography>
               <Typography
                 variant="body1"
@@ -594,8 +569,7 @@ const LandingPage: React.FC = () => {
                   paddingLeft: 2,
                 }}
               >
-                "Empowering professionals to connect, collaborate, and grow
-                together."
+                Empowering professionals to connect, collaborate, and grow together.
               </Typography>
 
               {/* Skills Visualization */}

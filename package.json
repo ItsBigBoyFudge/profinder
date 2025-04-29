@@ -2,13 +2,14 @@
   "name": "profinder",
   "version": "0.1.0",
   "private": true,
-  "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build && next export -o build",
-    "start": "next start",
-    "lint": "next lint",
-    "deploy": "gh-pages -d build"
-  },
+ "scripts": {
+  "dev": "next dev --turbopack",
+  "build": "next build",  
+  "start": "next start",
+  "lint": "next lint",
+  "deploy": "gh-pages -d build"
+}
+,
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",

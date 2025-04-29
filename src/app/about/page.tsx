@@ -129,13 +129,16 @@ const AboutPage: React.FC = () => {
 
   // Update cursor position on mouse move
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      setCursorPosition({ x: e.clientX, y: e.clientY });
-    };
-    window.addEventListener("mousemove", handleMouseMove);
-    return () => window.removeEventListener("mousemove", handleMouseMove);
+    // Check if window is defined (client-side only)
+    if (typeof window !== 'undefined') {
+      const handleMouseMove = (e: MouseEvent) => {
+        setCursorPosition({ x: e.clientX, y: e.clientY });
+      };
+      window.addEventListener("mousemove", handleMouseMove);
+      return () => window.removeEventListener("mousemove", handleMouseMove);
+    }
   }, []);
-
+  
   return (
     <StyledBox>
       <ParticleBackground />

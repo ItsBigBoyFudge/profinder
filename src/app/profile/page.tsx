@@ -1,5 +1,3 @@
-// src/app/page.tsx
-
 /**
  * This code is written by Khalid as part of a university thesis project.
  * The explanations are provided to offer guidance on the project's implementation.
@@ -143,6 +141,14 @@ interface ConnectedUser {
   id: string;
   name: string;
   profilePicture: string; // URL of the profile picture
+}
+
+// Interface for ImgBB API response
+interface ImgBBResponse {
+  success: boolean;
+  data: {
+    url: string;
+  };
 }
 
 /**
@@ -308,9 +314,13 @@ const ProfilePage: React.FC = () => {
 
         setSnackbarMessage("Profile updated successfully!");
         setSnackbarOpen(true);
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error("Error:", error);
-        setError(error.message || "An error occurred. Please try again.");
+        setError(
+          error instanceof Error
+            ? error.message
+            : "An error occurred. Please try again."
+        );
       }
     },
   });
@@ -357,7 +367,11 @@ const ProfilePage: React.FC = () => {
       }
     );
 
-    const data = await response.json();
+    if (!response.ok) {
+      throw new Error("Failed to upload image");
+    }
+
+    const data = (await response.json()) as ImgBBResponse;
     if (!data.success) {
       throw new Error("Failed to upload image");
     }
@@ -388,9 +402,13 @@ const ProfilePage: React.FC = () => {
       );
       setSnackbarMessage("Connection request accepted!");
       setSnackbarOpen(true);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error:", error);
-      setError(error.message || "An error occurred. Please try again.");
+      setError(
+        error instanceof Error
+          ? error.message
+          : "An error occurred. Please try again."
+      );
     }
   };
 
@@ -410,9 +428,13 @@ const ProfilePage: React.FC = () => {
       );
       setSnackbarMessage("Connection request rejected!");
       setSnackbarOpen(true);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error:", error);
-      setError(error.message || "An error occurred. Please try again.");
+      setError(
+        error instanceof Error
+          ? error.message
+          : "An error occurred. Please try again."
+      );
     }
   };
 
@@ -431,9 +453,13 @@ const ProfilePage: React.FC = () => {
         await deleteDoc(doc(db, "users", user.uid));
         await user.delete();
         router.push("/");
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error("Error:", error);
-        setError(error.message || "An error occurred. Please try again.");
+        setError(
+          error instanceof Error
+            ? error.message
+            : "An error occurred. Please try again."
+        );
       }
     }
   };
@@ -595,35 +621,32 @@ const ProfilePage: React.FC = () => {
                       />
                       <Grid container spacing={2}>
                         <Grid item xs={12} sm={6}>
-                          <DatePicker
-                            label="Age"
-                            value={formik.values.age}
-                            onChange={(value) =>
-                              formik.setFieldValue("age", value)
-                            }
-                            slotProps={{
-                              textField: {
-                                fullWidth: true,
-                                margin: "normal",
-                                error:
-                                  formik.touched.age &&
-                                  Boolean(formik.errors.age),
-                                helperText:
-                                  formik.touched.age && formik.errors.age,
-                                required: true,
-                                sx: {
-                                  "& .MuiInputBase-root": {
-                                    color: theme.palette.text.primary,
-                                    border: `1px solid ${theme.palette.divider}`,
-                                    borderRadius: "8px",
-                                  },
-                                  "& .MuiInputLabel-root": {
-                                    color: theme.palette.text.secondary,
-                                  },
-                                },
-                              },
-                            }}
-                          />
+                        <DatePicker
+  label="Age"
+  value={formik.values.age}
+  onChange={(value) => formik.setFieldValue("age", value)}
+  slotProps={{
+    textField: {
+      fullWidth: true,
+      margin: "normal",
+      error: formik.touched.age && Boolean(formik.errors.age),
+      helperText: formik.touched.age && typeof formik.errors.age === 'string' 
+        ? formik.errors.age 
+        : undefined,
+      required: true,
+      sx: {
+        "& .MuiInputBase-root": {
+          color: theme.palette.text.primary,
+          border: `1px solid ${theme.palette.divider}`,
+          borderRadius: "8px",
+        },
+        "& .MuiInputLabel-root": {
+          color: theme.palette.text.secondary,
+        },
+      },
+    },
+  }}
+/>
                         </Grid>
                         <Grid item xs={12} sm={6}>
                           <FormControl fullWidth margin="normal" required>

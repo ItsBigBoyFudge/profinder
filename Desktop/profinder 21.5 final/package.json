@@ -1,0 +1,49 @@
+{
+  "name": "profinder",
+  "version": "0.1.0",
+  "private": true,
+ "scripts": {
+  "dev": "next dev --turbopack",
+  "build": "next build",  
+  "start": "next start",
+  "lint": "next lint",
+  "deploy": "gh-pages -d build"
+}
+,
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@mui/icons-material": "^6.3.1",
+    "@mui/material": "^6.3.1",
+    "@mui/x-date-pickers": "^7.23.6",
+    "@tsparticles/engine": "^3.7.1",
+    "@tsparticles/react": "^3.0.0",
+    "@tsparticles/slim": "^3.7.1",
+    "chart.js": "^4.4.7",
+    "emoji-picker-react": "^4.12.0",
+    "firebase": "^11.1.0",
+    "formik": "^2.4.6",
+    "framer-motion": "^11.17.0",
+    "i": "^0.3.7",
+    "next": "15.1.4",
+    "npm": "^11.0.0",
+    "react": "^19.0.0",
+    "react-chartjs-2": "^5.3.0",
+    "react-confetti": "^6.2.2",
+    "react-csv": "^2.2.2",
+    "react-dom": "^19.0.0",
+    "react-firebase-hooks": "^5.1.1",
+    "react-use": "^17.6.0",
+    "yup": "^1.6.1"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.1.4",
+    "gh-pages": "^6.1.0",
+    "typescript": "^5"
+  }
+}

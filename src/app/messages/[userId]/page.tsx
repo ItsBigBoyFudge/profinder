@@ -120,7 +120,8 @@ const MessagesPage: React.FC = () => {
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(
     null
   ); // Track message for reaction.
-  const [isBlocked, setIsBlocked] = useState(false); // Track if the selected user is blocked.
+  const [isBlocked, setIsBlocked] = useState(false); // Track if the selected user is blocked by current user.
+  const [isBlockedByThem, setIsBlockedByThem] = useState(false); // Track if current user is blocked by selected user.
   const [isReported, setIsReported] = useState(false); // Track if the selected user is reported.
   const [isChatListOpen, setIsChatListOpen] = useState(false); // Track if the chat list is open on mobile.
   const [unreadMessages, setUnreadMessages] = useState<{
@@ -133,66 +134,114 @@ const MessagesPage: React.FC = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down("sm")); // Detect mobile devices.
   const router = useRouter(); // Next.js router for navigation.
 
+  // Helper function to check if a user is blocked by another user
+  const isUserBlocked = async (blockerId: string, blockedId: string) => {
+    try {
+      const userDoc = await getDoc(doc(db, "users", blockerId));
+      if (userDoc.exists()) {
+        const blockedUsers = userDoc.data().blockedUsers || [];
+        return blockedUsers.includes(blockedId);
+      }
+      return false;
+    } catch (error) {
+      console.error("Error checking block status:", error);
+      return false;
+    }
+  };
+
+  // Helper function to check mutual blocking status
+  const checkMutualBlockStatus = async (user1Id: string, user2Id: string) => {
+    const [user1BlocksUser2, user2BlocksUser1] = await Promise.all([
+      isUserBlocked(user1Id, user2Id),
+      isUserBlocked(user2Id, user1Id),
+    ]);
+    return { user1BlocksUser2, user2BlocksUser1 };
+  };
+
   // Fetch the list of connected users
   useEffect(() => {
     const fetchConnectedUsers = async () => {
       if (!currentUser) return;
 
-      // Fetch the current user's document from Firestore
-      const userDoc = await getDoc(doc(db, "users", currentUser.uid));
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        const connectedUserIds = userData.connections || [];
+      try {
+        // Fetch the current user's document from Firestore
+        const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          const connectedUserIds = userData.connections || [];
 
-        // Fetch details of all connected users
-        const userPromises = connectedUserIds.map(async (userId: string) => {
-          const connectedUserDoc = await getDoc(doc(db, "users", userId));
-          if (connectedUserDoc.exists()) {
-            const connectedUserData = connectedUserDoc.data();
-            return {
-              id: connectedUserDoc.id,
-              name: connectedUserData.name,
-              age: connectedUserData.age, // Age in years (not timestamp)
-              bio: connectedUserData.bio,
-              location: connectedUserData.location,
-              area: connectedUserData.area,
-              profession: connectedUserData.profession,
-              profilePictureUrl:
-                connectedUserData.profilePictureUrl || "/default-profile.png",
-              connections: connectedUserData.connections || [],
-              pendingConnections: connectedUserData.pendingConnections || [],
-              blockedUsers: connectedUserData.blockedUsers || [], // Initialize blockedUsers
-            };
-          }
-          return null;
-        });
+          // Fetch details of all connected users
+          const userPromises = connectedUserIds.map(async (userId: string) => {
+            const connectedUserDoc = await getDoc(doc(db, "users", userId));
+            if (connectedUserDoc.exists()) {
+              const connectedUserData = connectedUserDoc.data();
+              return {
+                id: connectedUserDoc.id,
+                name: connectedUserData.name,
+                age: connectedUserData.age, // Age in years (not timestamp)
+                bio: connectedUserData.bio,
+                location: connectedUserData.location,
+                area: connectedUserData.area,
+                profession: connectedUserData.profession,
+                profilePictureUrl:
+                  connectedUserData.profilePictureUrl || "/default-profile.png",
+                connections: connectedUserData.connections || [],
+                pendingConnections: connectedUserData.pendingConnections || [],
+                blockedUsers: connectedUserData.blockedUsers || [], // Initialize blockedUsers
+              };
+            }
+            return null;
+          });
 
-        // Filter out null values and set the connected users
-        const connectedUsers = (await Promise.all(userPromises)).filter(
-          Boolean
-        );
-        setUsers(connectedUsers as User[]);
-
-        // If a user ID is provided in the URL, set that user as the selected user
-        if (userId) {
-          const selectedUser = connectedUsers.find(
-            (user) => user?.id === userId
+          // Filter out null values and set the connected users
+          const connectedUsers = (await Promise.all(userPromises)).filter(
+            Boolean
           );
-          if (selectedUser) {
-            setSelectedUser(selectedUser);
-            setIsBlocked(
-              userData.blockedUsers?.includes(selectedUser.id) || false
+          setUsers(connectedUsers as User[]);
+
+          // If a user ID is provided in the URL, set that user as the selected user
+          if (userId) {
+            const selectedUser = connectedUsers.find(
+              (user) => user?.id === userId
             );
+            if (selectedUser) {
+              setSelectedUser(selectedUser);
+              
+              // Check blocking status for the selected user
+              const blockStatus = await checkMutualBlockStatus(currentUser.uid, selectedUser.id);
+              setIsBlocked(blockStatus.user1BlocksUser2);
+              setIsBlockedByThem(blockStatus.user2BlocksUser1);
+            }
           }
         }
+      } catch (error) {
+        console.error("Error fetching connected users:", error);
+      } finally {
+        setLoading(false); // Set loading to false after fetching users
       }
-      setLoading(false); // Set loading to false after fetching users
     };
 
     fetchConnectedUsers();
   }, [currentUser, userId]);
 
-  // Fetch messages for the selected user
+  // Update block status when selected user changes
+  useEffect(() => {
+    const updateBlockStatus = async () => {
+      if (!currentUser || !selectedUser) return;
+
+      try {
+        const blockStatus = await checkMutualBlockStatus(currentUser.uid, selectedUser.id);
+        setIsBlocked(blockStatus.user1BlocksUser2);
+        setIsBlockedByThem(blockStatus.user2BlocksUser1);
+      } catch (error) {
+        console.error("Error updating block status:", error);
+      }
+    };
+
+    updateBlockStatus();
+  }, [currentUser, selectedUser]);
+
+  // Fetch messages for the selected user with block filtering
   useEffect(() => {
     if (!currentUser || !selectedUser) return;
 
@@ -206,75 +255,17 @@ const MessagesPage: React.FC = () => {
 
     // Subscribe to real-time updates for the messages
     const unsubscribe = onSnapshot(messagesQuery, async (snapshot) => {
-      const messagesData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        senderId: doc.data().senderId,
-        receiverId: doc.data().receiverId,
-        text: doc.data().text,
-        timestamp: doc.data().timestamp?.toDate().getTime() || 0,
-        seen: doc.data().seen || false,
-        reactions: doc.data().reactions || {},
-        isDeleted: doc.data().isDeleted || false,
-        edited: doc.data().edited || false,
-      }));
-
-      // Mark messages as seen if the current user is the receiver
-      const batch = writeBatch(db);
-      messagesData.forEach((message) => {
-        if (message.receiverId === currentUser.uid && !message.seen) {
-          const messageRef = doc(db, "messages", message.id);
-          batch.update(messageRef, { seen: true });
+      try {
+        // Check current block status
+        const blockStatus = await checkMutualBlockStatus(currentUser.uid, selectedUser.id);
+        
+        // If either user has blocked the other, don't show any messages
+        if (blockStatus.user1BlocksUser2 || blockStatus.user2BlocksUser1) {
+          setMessages([]);
+          return;
         }
-      });
-      await batch.commit();
 
-      setMessages(messagesData);
-
-      // Update unread messages count
-      const unreadCount = messagesData.filter(
-        (message) => message.receiverId === currentUser.uid && !message.seen
-      ).length;
-      setUnreadMessages((prev) => ({
-        ...prev,
-        [selectedUser.id]: unreadCount,
-      }));
-
-      // Update last message for the selected user
-      const lastMessage = messagesData[messagesData.length - 1];
-      if (lastMessage) {
-        setLastMessages((prev) => ({
-          ...prev,
-          [selectedUser.id]: {
-            text: lastMessage.text,
-            senderId: lastMessage.senderId,
-          },
-        }));
-      }
-    });
-
-    return () => unsubscribe(); // Unsubscribe from the snapshot listener when the component unmounts
-  }, [currentUser, selectedUser]);
-
-  // Update last messages and unread counts for all users
-  useEffect(() => {
-    if (!currentUser) return;
-
-    const updateLastMessagesAndUnreadCounts = async () => {
-      const updatedLastMessages: {
-        [userId: string]: { text: string; senderId: string };
-      } = {};
-      const updatedUnreadMessages: { [userId: string]: number } = {};
-
-      for (const user of users) {
-        const messagesQuery = query(
-          collection(db, "messages"),
-          where("senderId", "in", [currentUser.uid, user.id]),
-          where("receiverId", "in", [currentUser.uid, user.id]),
-          orderBy("timestamp", "asc")
-        );
-
-        const messagesSnapshot = await getDocs(messagesQuery);
-        const messagesData = messagesSnapshot.docs.map((doc) => ({
+        const messagesData = snapshot.docs.map((doc) => ({
           id: doc.id,
           senderId: doc.data().senderId,
           receiverId: doc.data().receiverId,
@@ -286,18 +277,103 @@ const MessagesPage: React.FC = () => {
           edited: doc.data().edited || false,
         }));
 
-        const lastMessage = messagesData[messagesData.length - 1];
-        if (lastMessage) {
-          updatedLastMessages[user.id] = {
-            text: lastMessage.text,
-            senderId: lastMessage.senderId,
-          };
-        }
+        // Mark messages as seen if the current user is the receiver and not blocked
+        const batch = writeBatch(db);
+        messagesData.forEach((message) => {
+          if (message.receiverId === currentUser.uid && !message.seen) {
+            const messageRef = doc(db, "messages", message.id);
+            batch.update(messageRef, { seen: true });
+          }
+        });
+        await batch.commit();
 
+        setMessages(messagesData);
+
+        // Update unread messages count
         const unreadCount = messagesData.filter(
           (message) => message.receiverId === currentUser.uid && !message.seen
         ).length;
-        updatedUnreadMessages[user.id] = unreadCount;
+        setUnreadMessages((prev) => ({
+          ...prev,
+          [selectedUser.id]: unreadCount,
+        }));
+
+        // Update last message for the selected user
+        const lastMessage = messagesData[messagesData.length - 1];
+        if (lastMessage) {
+          setLastMessages((prev) => ({
+            ...prev,
+            [selectedUser.id]: {
+              text: lastMessage.text,
+              senderId: lastMessage.senderId,
+            },
+          }));
+        }
+      } catch (error) {
+        console.error("Error processing messages:", error);
+      }
+    });
+
+    return () => unsubscribe(); // Unsubscribe from the snapshot listener when the component unmounts
+  }, [currentUser, selectedUser]);
+
+  // Update last messages and unread counts for all users with block filtering
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const updateLastMessagesAndUnreadCounts = async () => {
+      const updatedLastMessages: {
+        [userId: string]: { text: string; senderId: string };
+      } = {};
+      const updatedUnreadMessages: { [userId: string]: number } = {};
+
+      for (const user of users) {
+        try {
+          // Check if either user has blocked the other
+          const blockStatus = await checkMutualBlockStatus(currentUser.uid, user.id);
+          
+          // If either user has blocked the other, skip this user
+          if (blockStatus.user1BlocksUser2 || blockStatus.user2BlocksUser1) {
+            updatedUnreadMessages[user.id] = 0;
+            continue;
+          }
+
+          const messagesQuery = query(
+            collection(db, "messages"),
+            where("senderId", "in", [currentUser.uid, user.id]),
+            where("receiverId", "in", [currentUser.uid, user.id]),
+            orderBy("timestamp", "asc")
+          );
+
+          const messagesSnapshot = await getDocs(messagesQuery);
+          const messagesData = messagesSnapshot.docs.map((doc) => ({
+            id: doc.id,
+            senderId: doc.data().senderId,
+            receiverId: doc.data().receiverId,
+            text: doc.data().text,
+            timestamp: doc.data().timestamp?.toDate().getTime() || 0,
+            seen: doc.data().seen || false,
+            reactions: doc.data().reactions || {},
+            isDeleted: doc.data().isDeleted || false,
+            edited: doc.data().edited || false,
+          }));
+
+          const lastMessage = messagesData[messagesData.length - 1];
+          if (lastMessage) {
+            updatedLastMessages[user.id] = {
+              text: lastMessage.text,
+              senderId: lastMessage.senderId,
+            };
+          }
+
+          const unreadCount = messagesData.filter(
+            (message) => message.receiverId === currentUser.uid && !message.seen
+          ).length;
+          updatedUnreadMessages[user.id] = unreadCount;
+        } catch (error) {
+          console.error(`Error updating messages for user ${user.id}:`, error);
+          updatedUnreadMessages[user.id] = 0;
+        }
       }
 
       setLastMessages(updatedLastMessages);
@@ -307,11 +383,24 @@ const MessagesPage: React.FC = () => {
     updateLastMessagesAndUnreadCounts();
   }, [currentUser, users]);
 
-  // Handle sending a new message
+  // Handle sending a new message with block checking
   const handleSendMessage = async () => {
     if (!currentUser || !selectedUser || !newMessage.trim()) return;
 
     try {
+      // Check if either user has blocked the other
+      const blockStatus = await checkMutualBlockStatus(currentUser.uid, selectedUser.id);
+      
+      if (blockStatus.user2BlocksUser1) {
+        alert("Cannot send message. You have been blocked by this user.");
+        return;
+      }
+
+      if (blockStatus.user1BlocksUser2) {
+        alert("Cannot send message. You have blocked this user. Unblock them first.");
+        return;
+      }
+
       // Add a new message to the Firestore collection
       await addDoc(collection(db, "messages"), {
         senderId: currentUser.uid,
@@ -327,6 +416,7 @@ const MessagesPage: React.FC = () => {
       setNewMessage(""); // Clear the input field
     } catch (error) {
       console.error("Error sending message:", error);
+      alert("Failed to send message. Please try again.");
     }
   };
 
@@ -334,33 +424,45 @@ const MessagesPage: React.FC = () => {
   const handleAddReaction = async (messageId: string, emoji: string) => {
     if (!currentUser) return;
 
-    const messageRef = doc(db, "messages", messageId);
-    const messageDoc = await getDoc(messageRef);
+    try {
+      const messageRef = doc(db, "messages", messageId);
+      const messageDoc = await getDoc(messageRef);
 
-    if (messageDoc.exists()) {
-      const reactions = messageDoc.data().reactions || {};
-      reactions[currentUser.uid] = emoji; // Add/update reaction
-      await updateDoc(messageRef, { reactions });
+      if (messageDoc.exists()) {
+        const reactions = messageDoc.data().reactions || {};
+        reactions[currentUser.uid] = emoji; // Add/update reaction
+        await updateDoc(messageRef, { reactions });
+      }
+      setReactionPickerAnchor(null); // Close the emoji picker
+    } catch (error) {
+      console.error("Error adding reaction:", error);
     }
-    setReactionPickerAnchor(null); // Close the emoji picker
   };
 
   // Handle deleting a message
   const handleDeleteMessage = async (messageId: string) => {
     if (!currentUser) return;
 
-    const messageRef = doc(db, "messages", messageId);
-    await updateDoc(messageRef, { isDeleted: true });
+    try {
+      const messageRef = doc(db, "messages", messageId);
+      await updateDoc(messageRef, { isDeleted: true });
+    } catch (error) {
+      console.error("Error deleting message:", error);
+    }
   };
 
   // Handle editing a message
   const handleEditMessage = async (messageId: string, newText: string) => {
     if (!currentUser) return;
 
-    const messageRef = doc(db, "messages", messageId);
-    await updateDoc(messageRef, { text: newText, edited: true });
-    setEditingMessageId(null); // Exit edit mode
-    setEditingMessageText(""); // Clear the edit text
+    try {
+      const messageRef = doc(db, "messages", messageId);
+      await updateDoc(messageRef, { text: newText, edited: true });
+      setEditingMessageId(null); // Exit edit mode
+      setEditingMessageText(""); // Clear the edit text
+    } catch (error) {
+      console.error("Error editing message:", error);
+    }
   };
 
   // Handle canceling edit mode
@@ -373,19 +475,25 @@ const MessagesPage: React.FC = () => {
   const handleBlockUser = async (userId: string) => {
     if (!currentUser) return;
 
-    const userRef = doc(db, "users", currentUser.uid); // Reference to the current user's document
-    const userDoc = await getDoc(userRef); // Fetch the current user's document
+    try {
+      const userRef = doc(db, "users", currentUser.uid); // Reference to the current user's document
+      const userDoc = await getDoc(userRef); // Fetch the current user's document
 
-    if (userDoc.exists()) {
-      const blockedUsers = userDoc.data().blockedUsers || []; // Get the current list of blocked users
-      if (!blockedUsers.includes(userId)) {
-        // Add the user to the blocked list if they're not already blocked
-        await updateDoc(userRef, { blockedUsers: [...blockedUsers, userId] });
-        setIsBlocked(true);
-        alert("User blocked successfully.");
-      } else {
-        alert("User is already blocked.");
+      if (userDoc.exists()) {
+        const blockedUsers = userDoc.data().blockedUsers || []; // Get the current list of blocked users
+        if (!blockedUsers.includes(userId)) {
+          // Add the user to the blocked list if they're not already blocked
+          await updateDoc(userRef, { blockedUsers: [...blockedUsers, userId] });
+          setIsBlocked(true);
+          setMessages([]); // Clear messages when blocking
+          alert("User blocked successfully.");
+        } else {
+          alert("User is already blocked.");
+        }
       }
+    } catch (error) {
+      console.error("Error blocking user:", error);
+      alert("Failed to block user. Please try again.");
     }
   };
 
@@ -393,22 +501,27 @@ const MessagesPage: React.FC = () => {
   const handleUnblockUser = async (userId: string) => {
     if (!currentUser) return;
 
-    const userRef = doc(db, "users", currentUser.uid); // Reference to the current user's document
-    const userDoc = await getDoc(userRef); // Fetch the current user's document
+    try {
+      const userRef = doc(db, "users", currentUser.uid); // Reference to the current user's document
+      const userDoc = await getDoc(userRef); // Fetch the current user's document
 
-    if (userDoc.exists()) {
-      const blockedUsers = userDoc.data().blockedUsers || []; // Get the current list of blocked users
-      if (blockedUsers.includes(userId)) {
-        // Remove the user from the blocked list
-        const updatedBlockedUsers = blockedUsers.filter(
-          (id: string) => id !== userId
-        );
-        await updateDoc(userRef, { blockedUsers: updatedBlockedUsers });
-        setIsBlocked(false);
-        alert("User unblocked successfully.");
-      } else {
-        alert("User is not blocked.");
+      if (userDoc.exists()) {
+        const blockedUsers = userDoc.data().blockedUsers || []; // Get the current list of blocked users
+        if (blockedUsers.includes(userId)) {
+          // Remove the user from the blocked list
+          const updatedBlockedUsers = blockedUsers.filter(
+            (id: string) => id !== userId
+          );
+          await updateDoc(userRef, { blockedUsers: updatedBlockedUsers });
+          setIsBlocked(false);
+          alert("User unblocked successfully.");
+        } else {
+          alert("User is not blocked.");
+        }
       }
+    } catch (error) {
+      console.error("Error unblocking user:", error);
+      alert("Failed to unblock user. Please try again.");
     }
   };
 
@@ -516,7 +629,7 @@ const MessagesPage: React.FC = () => {
     return years;
   };
 
-  // Get the last message for a user
+  // Get the last message for a user (only if not blocked)
   const getLastMessage = (userId: string) => {
     const lastMessage = lastMessages[userId];
     if (!lastMessage) return "No messages yet";
@@ -530,6 +643,9 @@ const MessagesPage: React.FC = () => {
         : lastMessage.text
     }`;
   };
+
+  // Determine if messaging is disabled
+  const isMessagingDisabled = isBlocked || isBlockedByThem || isReported;
 
   return (
     <Container maxWidth="lg" sx={{ height: "100vh", py: 2 }}>
@@ -556,7 +672,7 @@ const MessagesPage: React.FC = () => {
               width: isMobile ? "100%" : 320,
               position: "relative",
               border: "none",
-              borderRight: `1px solid ${alpha(theme.palette.divider, 0.1)}`, // Add this line
+              borderRight: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
             },
           }}
         >
@@ -735,9 +851,21 @@ const MessagesPage: React.FC = () => {
                   />
                 </Tooltip>
 
-                <Typography variant="subtitle1" fontWeight="medium">
-                  {selectedUser.name}
-                </Typography>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="subtitle1" fontWeight="medium">
+                    {selectedUser.name}
+                  </Typography>
+                  {isBlockedByThem && (
+                    <Typography variant="caption" color="error.main">
+                      You have been blocked by this user
+                    </Typography>
+                  )}
+                  {isBlocked && (
+                    <Typography variant="caption" color="warning.main">
+                      You have blocked this user
+                    </Typography>
+                  )}
+                </Box>
 
                 <Box sx={{ ml: "auto", display: "flex", gap: 0.5 }}>
                   {isBlocked ? (
@@ -752,6 +880,7 @@ const MessagesPage: React.FC = () => {
                     <IconButton
                       size="small"
                       onClick={() => handleBlockUser(selectedUser.id)}
+                      disabled={isBlockedByThem}
                     >
                       <BlockOutlinedIcon />
                     </IconButton>
@@ -765,11 +894,16 @@ const MessagesPage: React.FC = () => {
                         : handleReportUser(selectedUser.id, "Spam")
                     }
                     sx={{ color: isReported ? "success.main" : "inherit" }}
+                    disabled={isBlockedByThem}
                   >
                     <FlagOutlinedIcon />
                   </IconButton>
 
-                  <IconButton size="small" onClick={handleDeleteChatHistory}>
+                  <IconButton 
+                    size="small" 
+                    onClick={handleDeleteChatHistory}
+                    disabled={isBlockedByThem}
+                  >
                     <DeleteOutlineRoundedIcon />
                   </IconButton>
                 </Box>
@@ -777,217 +911,259 @@ const MessagesPage: React.FC = () => {
 
               {/* Messages Area */}
               <Box sx={{ flex: 1, overflow: "auto", px: 3, py: 2 }}>
-                {loading
-                  ? Array.from({ length: 5 }).map((_, index) => (
+                {(isBlocked || isBlockedByThem) ? (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      height: "100%",
+                      flexDirection: "column",
+                      gap: 2,
+                    }}
+                  >
+                    <Typography variant="h6" color="text.secondary">
+                      {isBlockedByThem 
+                        ? "You have been blocked by this user" 
+                        : "You have blocked this user"}
+                    </Typography>
+                    <Typography variant="body2" color="text.disabled">
+                      {isBlockedByThem 
+                        ? "You cannot see messages or send new ones" 
+                        : "Unblock to see messages and chat again"}
+                    </Typography>
+                  </Box>
+                ) : loading ? (
+                  Array.from({ length: 5 }).map((_, index) => (
+                    <Box
+                      key={index}
+                      sx={{
+                        display: "flex",
+                        justifyContent:
+                          index % 2 === 0 ? "flex-end" : "flex-start",
+                        mb: 2,
+                      }}
+                    >
+                      <Skeleton
+                        variant="rectangular"
+                        width="70%"
+                        height={100}
+                      />
+                    </Box>
+                  ))
+                ) : messages.length === 0 ? (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      height: "100%",
+                      flexDirection: "column",
+                      gap: 2,
+                    }}
+                  >
+                    <Typography variant="h6" color="text.secondary">
+                      No messages yet
+                    </Typography>
+                    <Typography variant="body2" color="text.disabled">
+                      Start a conversation with {selectedUser.name}
+                    </Typography>
+                  </Box>
+                ) : (
+                  messages.map((message) => (
+                    <Fade in key={message.id}>
                       <Box
-                        key={index}
                         sx={{
                           display: "flex",
                           justifyContent:
-                            index % 2 === 0 ? "flex-end" : "flex-start",
+                            message.senderId === currentUser?.uid
+                              ? "flex-end"
+                              : "flex-start",
                           mb: 2,
                         }}
                       >
-                        <Skeleton
-                          variant="rectangular"
-                          width="70%"
-                          height={100}
-                        />
-                      </Box>
-                    ))
-                  : messages.map((message) => (
-                      <Fade in key={message.id}>
-                        <Box
+                        <Paper
+                          elevation={0}
                           sx={{
-                            display: "flex",
-                            justifyContent:
+                            p: 2,
+                            maxWidth: "70%",
+                            borderRadius: 3,
+                            bgcolor:
                               message.senderId === currentUser?.uid
-                                ? "flex-end"
-                                : "flex-start",
-                            mb: 2,
+                                ? alpha(theme.palette.primary.main, 0.1)
+                                : alpha(theme.palette.grey[100], 0.5),
                           }}
                         >
-                          <Paper
-                            elevation={0}
-                            sx={{
-                              p: 2,
-                              maxWidth: "70%",
-                              borderRadius: 3,
-                              bgcolor:
-                                message.senderId === currentUser?.uid
-                                  ? alpha(theme.palette.primary.main, 0.1)
-                                  : alpha(theme.palette.grey[100], 0.5),
-                            }}
-                          >
-                            {message.isDeleted ? (
-                              <Typography
-                                variant="body2"
-                                color="text.secondary"
-                                fontStyle="italic"
-                              >
-                                Message deleted
-                              </Typography>
-                            ) : editingMessageId === message.id ? (
+                          {message.isDeleted ? (
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              fontStyle="italic"
+                            >
+                              Message deleted
+                            </Typography>
+                          ) : editingMessageId === message.id ? (
+                            <Box
+                              sx={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 1,
+                              }}
+                            >
+                              <TextField
+                                fullWidth
+                                variant="outlined"
+                                size="small"
+                                value={editingMessageText}
+                                onChange={(e) =>
+                                  setEditingMessageText(e.target.value)
+                                }
+                                sx={{
+                                  "& .MuiOutlinedInput-root": {
+                                    borderRadius: 2,
+                                  },
+                                }}
+                              />
                               <Box
                                 sx={{
                                   display: "flex",
-                                  flexDirection: "column",
                                   gap: 1,
+                                  justifyContent: "flex-end",
                                 }}
                               >
-                                <TextField
-                                  fullWidth
-                                  variant="outlined"
+                                <IconButton
                                   size="small"
-                                  value={editingMessageText}
-                                  onChange={(e) =>
-                                    setEditingMessageText(e.target.value)
+                                  onClick={() =>
+                                    handleEditMessage(
+                                      message.id,
+                                      editingMessageText
+                                    )
                                   }
-                                  sx={{
-                                    "& .MuiOutlinedInput-root": {
-                                      borderRadius: 2,
-                                    },
-                                  }}
-                                />
-                                <Box
-                                  sx={{
-                                    display: "flex",
-                                    gap: 1,
-                                    justifyContent: "flex-end",
-                                  }}
+                                  sx={{ color: "success.main" }}
                                 >
-                                  <IconButton
-                                    size="small"
-                                    onClick={() =>
-                                      handleEditMessage(
-                                        message.id,
-                                        editingMessageText
-                                      )
-                                    }
-                                    sx={{ color: "success.main" }}
-                                  >
-                                    <CheckRoundedIcon fontSize="small" />
-                                  </IconButton>
-                                  <IconButton
-                                    size="small"
-                                    onClick={handleCancelEdit}
-                                    sx={{ color: "error.main" }}
-                                  >
-                                    <CloseRoundedIcon fontSize="small" />
-                                  </IconButton>
-                                </Box>
+                                  <CheckRoundedIcon fontSize="small" />
+                                </IconButton>
+                                <IconButton
+                                  size="small"
+                                  onClick={handleCancelEdit}
+                                  sx={{ color: "error.main" }}
+                                >
+                                  <CloseRoundedIcon fontSize="small" />
+                                </IconButton>
                               </Box>
-                            ) : (
-                              <>
-                                <Typography variant="body1">
-                                  {message.text}
-                                  {message.edited && (
-                                    <Typography
-                                      component="span"
-                                      variant="caption"
-                                      color="text.secondary"
-                                      sx={{ ml: 1 }}
-                                    >
-                                      (edited)
-                                    </Typography>
-                                  )}
-                                </Typography>
-
-                                <Box
-                                  sx={{
-                                    mt: 1,
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "space-between",
-                                  }}
-                                >
+                            </Box>
+                          ) : (
+                            <>
+                              <Typography variant="body1">
+                                {message.text}
+                                {message.edited && (
                                   <Typography
+                                    component="span"
                                     variant="caption"
                                     color="text.secondary"
+                                    sx={{ ml: 1 }}
                                   >
-                                    {new Date(
-                                      message.timestamp
-                                    ).toLocaleTimeString()}
+                                    (edited)
                                   </Typography>
-
-                                  {message.senderId === currentUser?.uid && (
-                                    <DoneAllRoundedIcon
-                                      sx={{
-                                        fontSize: 16,
-                                        color: message.seen
-                                          ? "primary.main"
-                                          : "text.disabled",
-                                      }}
-                                    />
-                                  )}
-                                </Box>
-
-                                {/* Message Reactions */}
-                                {Object.entries(message.reactions || {}).map(
-                                  ([userId, emoji]) => (
-                                    <Typography
-                                      key={userId}
-                                      variant="caption"
-                                      sx={{ ml: 1 }}
-                                    >
-                                      {emoji}
-                                    </Typography>
-                                  )
                                 )}
+                              </Typography>
 
-                                {/* Message Actions */}
-                                <Box
-                                  sx={{
-                                    mt: 1,
-                                    display: "flex",
-                                    gap: 1,
-                                    opacity: 0,
-                                    transition: "0.2s",
-                                    "&:hover": { opacity: 1 },
-                                  }}
+                              <Box
+                                sx={{
+                                  mt: 1,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                }}
+                              >
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
                                 >
-                                  <IconButton
-                                    size="small"
-                                    onClick={(e) =>
-                                      handleOpenReactionPicker(e, message.id)
-                                    }
+                                  {new Date(
+                                    message.timestamp
+                                  ).toLocaleTimeString()}
+                                </Typography>
+
+                                {message.senderId === currentUser?.uid && (
+                                  <DoneAllRoundedIcon
+                                    sx={{
+                                      fontSize: 16,
+                                      color: message.seen
+                                        ? "primary.main"
+                                        : "text.disabled",
+                                    }}
+                                  />
+                                )}
+                              </Box>
+
+                              {/* Message Reactions */}
+                              {Object.entries(message.reactions || {}).map(
+                                ([userId, emoji]) => (
+                                  <Typography
+                                    key={userId}
+                                    variant="caption"
+                                    sx={{ ml: 1 }}
                                   >
-                                    <AddReactionOutlinedIcon fontSize="small" />
-                                  </IconButton>
-                                  {message.senderId === currentUser?.uid &&
-                                    !message.isDeleted && (
-                                      <>
-                                        <IconButton
-                                          size="small"
-                                          onClick={() => {
-                                            setEditingMessageId(message.id);
-                                            setEditingMessageText(message.text);
-                                          }}
-                                        >
-                                          <EditOutlinedIcon fontSize="small" />
-                                        </IconButton>
-                                        <IconButton
-                                          size="small"
-                                          onClick={() =>
-                                            handleDeleteMessage(message.id)
-                                          }
-                                          sx={{ color: "error.light" }}
-                                        >
-                                          <DeleteOutlineRoundedIcon fontSize="small" />
-                                        </IconButton>
-                                      </>
-                                    )}
-                                </Box>
-                              </>
-                            )}
-                          </Paper>
-                        </Box>
-                      </Fade>
-                    ))}
+                                    {emoji}
+                                  </Typography>
+                                )
+                              )}
+
+                              {/* Message Actions */}
+                              <Box
+                                sx={{
+                                  mt: 1,
+                                  display: "flex",
+                                  gap: 1,
+                                  opacity: 0,
+                                  transition: "0.2s",
+                                  "&:hover": { opacity: 1 },
+                                }}
+                              >
+                                <IconButton
+                                  size="small"
+                                  onClick={(e) =>
+                                    handleOpenReactionPicker(e, message.id)
+                                  }
+                                >
+                                  <AddReactionOutlinedIcon fontSize="small" />
+                                </IconButton>
+                                {message.senderId === currentUser?.uid &&
+                                  !message.isDeleted && (
+                                    <>
+                                      <IconButton
+                                        size="small"
+                                        onClick={() => {
+                                          setEditingMessageId(message.id);
+                                          setEditingMessageText(message.text);
+                                        }}
+                                      >
+                                        <EditOutlinedIcon fontSize="small" />
+                                      </IconButton>
+                                      <IconButton
+                                        size="small"
+                                        onClick={() =>
+                                          handleDeleteMessage(message.id)
+                                        }
+                                        sx={{ color: "error.light" }}
+                                      >
+                                        <DeleteOutlineRoundedIcon fontSize="small" />
+                                      </IconButton>
+                                    </>
+                                  )}
+                              </Box>
+                            </>
+                          )}
+                        </Paper>
+                      </Box>
+                    </Fade>
+                  ))
+                )}
               </Box>
 
               {/* Message Input */}
-              {!isBlocked && !isReported ? (
+              {!isMessagingDisabled ? (
                 <Box
                   sx={{
                     p: 2,
@@ -1033,7 +1209,9 @@ const MessagesPage: React.FC = () => {
                   }}
                 >
                   <Typography variant="body2" color="text.secondary">
-                    {isBlocked
+                    {isBlockedByThem
+                      ? "You have been blocked by this user and cannot send messages."
+                      : isBlocked
                       ? "You have blocked this user. Unblock to send messages."
                       : "You have reported this user. Unreport to send messages."}
                   </Typography>
